@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import messagebox
 import random
 
-# --- Configuration du jeu ---
+# --- Configuration du jeu --
 CODE_LENGTH = 4
 COLOR_MIN = 1
 COLOR_MAX = 4
