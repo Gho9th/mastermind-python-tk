@@ -5,3 +5,5 @@ Antony Raimbault
 Arthur Cousin
 Elouan Laporte
 Mohammed Sy
+
+INSTALLEZ LES EXTENTIONS SUIVANTES SUR VSCODE : Python, Pylance et Code runner. LAISSEZ TOUT DANS LE FICHIER SINON LE JEU NE MARCHERA PAS
