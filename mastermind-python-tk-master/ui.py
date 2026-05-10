@@ -6,7 +6,6 @@ import json
 from utils import *
 from ai import SimpleAI
 
-
 class MastermindApp(tk.Tk):
     """
     Classe principale de l'application Tkinter.
@@ -17,14 +16,14 @@ class MastermindApp(tk.Tk):
         super().__init__()
         self.title("Mastermind")
         self.resizable(False, False)
-
+        
         # état du jeu
-        self.mode = tk.StringVar(value="joueur_devine")  # mode sélectionné
-        self.secret = None               # code secret (liste d'entiers)
-        self.current_guess = []          # proposition en cours
-        self.history = []                # historique des essais [(guess, (noirs, blancs)), ...]
-        self.ai = None                   # instance de l'IA si utilisée
-        self.turn = 0                    # numéro d'essai courant
+        self.mode = tk.StringVar(value="joueur_devine")
+        self.secret = None
+        self.current_guess = []
+        self.history = []
+        self.ai = None
+        self.turn = 0
 
         # construire l'interface graphique
         self._build_ui()
@@ -38,17 +37,14 @@ class MastermindApp(tk.Tk):
         # cadre pour choisir le mode de jeu
         mode_frame = tk.LabelFrame(top, text="Mode", padx=6, pady=6)
         mode_frame.pack(side="left", padx=6)
-        # trois modes : joueur devine, IA devine, deux joueurs
-        tk.Radiobutton(mode_frame, text="Joueur devine (IA choisit)", variable=self.mode,
-                       value="joueur_devine", command=self.reset_game).pack(anchor="w")
-        tk.Radiobutton(mode_frame, text="IA devine (vous choisissez)", variable=self.mode,
-                       value="ia_devine", command=self.reset_game).pack(anchor="w")
-        tk.Radiobutton(mode_frame, text="2 joueurs", variable=self.mode,
-                       value="deux_joueurs", command=self.reset_game).pack(anchor="w")
+        tk.Radiobutton(mode_frame, text="Joueur devine (IA choisit)", variable=self.mode, value="joueur_devine", command=self.reset_game).pack(anchor="w")
+        tk.Radiobutton(mode_frame, text="IA devine (vous choisissez)", variable=self.mode, value="ia_devine", command=self.reset_game).pack(anchor="w")
+        tk.Radiobutton(mode_frame, text="2 joueurs", variable=self.mode, value="deux_joueurs", command=self.reset_game).pack(anchor="w")
 
         # cadre pour les boutons de contrôle
         ctrl_frame = tk.Frame(top)
         ctrl_frame.pack(side="right", padx=6)
+
         tk.Button(ctrl_frame, text="Nouvelle partie", command=self.reset_game).pack(fill="x")
         tk.Button(ctrl_frame, text="Sauvegarder", command=self.save_game).pack(fill="x", pady=2)
         tk.Button(ctrl_frame, text="Charger", command=self.load_game).pack(fill="x", pady=2)
@@ -59,49 +55,74 @@ class MastermindApp(tk.Tk):
         game_frame = tk.Frame(self, padx=10, pady=6)
         game_frame.pack()
 
-        # affichage du code secret (cases vides ou masquées)
+        # affichage du code secret
         self.secret_frame = tk.LabelFrame(game_frame, text="Code secret", padx=6, pady=6)
         self.secret_frame.grid(row=0, column=0, sticky="n")
+
         self.secret_pegs = []
+
         for i in range(CODE_LENGTH):
-            # chaque "peg" est un Canvas carré ; on change son bg pour afficher la couleur
-            c = tk.Canvas(self.secret_frame, width=PEG_SIZE, height=PEG_SIZE,
-                          bg=EMPTY_COLOR, highlightthickness=1)
+            c = tk.Canvas(self.secret_frame, width=PEG_SIZE, height=PEG_SIZE, bg=EMPTY_COLOR, highlightthickness=1)
             c.grid(row=0, column=i, padx=4, pady=4)
             self.secret_pegs.append(c)
 
         # historique des propositions et feedbacks
         hist_frame = tk.LabelFrame(game_frame, text="Historique", padx=6, pady=6)
         hist_frame.grid(row=0, column=1, padx=10)
-        self.hist_canvas = tk.Canvas(hist_frame, width=420, height=300)
-        self.hist_canvas.pack()
-        self.hist_items = []  # liste pour suivre les lignes dessinées
+
+        # scrollbar verticale
+        scrollbar = tk.Scrollbar(hist_frame, orient="vertical")
+        scrollbar.pack(side="right", fill="y")
+
+        # canvas principal
+        self.hist_canvas = tk.Canvas(hist_frame, width=420, height=300, yscrollcommand=scrollbar.set)
+        self.hist_canvas.pack(side="left", fill="both", expand=True)
+
+        # connecter scrollbar <-> canvas
+        scrollbar.config(command=self.hist_canvas.yview)
+
+        # frame interne scrollable
+        self.hist_inner = tk.Frame(self.hist_canvas)
+
+        # ajouter le frame dans le canvas
+        self.hist_canvas.create_window((0, 0), window=self.hist_inner, anchor="nw")
+
+        # mise à jour automatique de la zone scrollable
+        self.hist_inner.bind(
+            "<Configure>",
+            lambda e: self.hist_canvas.configure(
+                scrollregion=self.hist_canvas.bbox("all")
+            )
+        )
+
+        # scroll molette souris
+        self.hist_canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+        self.hist_items = []
 
         # zone pour composer la proposition courante
         sel_frame = tk.LabelFrame(self, text="Composer votre proposition", padx=6, pady=6)
         sel_frame.pack(padx=10, pady=6, fill="x")
+
         self.guess_slots = []
+
         for i in range(CODE_LENGTH):
-            # slots cliquables pour faire défiler les couleurs
-            c = tk.Canvas(sel_frame, width=PEG_SIZE, height=PEG_SIZE,
-                          bg=EMPTY_COLOR, highlightthickness=1)
+            c = tk.Canvas(sel_frame, width=PEG_SIZE, height=PEG_SIZE, bg=EMPTY_COLOR, highlightthickness=1)
             c.grid(row=0, column=i, padx=6, pady=6)
-            # bind pour gérer le clic et changer la couleur du slot
             c.bind("<Button-1>", lambda e, idx=i: self.cycle_slot(idx))
             self.guess_slots.append(c)
 
-        # boutons de couleurs pour remplir rapidement la proposition
+        # boutons de couleurs
         color_btn_frame = tk.Frame(sel_frame)
         color_btn_frame.grid(row=1, column=0, columnspan=CODE_LENGTH)
+
         for color_id in range(COLOR_MIN, COLOR_MAX + 1):
-            # chaque bouton a un fond de la couleur correspondante
-            b = tk.Button(color_btn_frame, bg=COLOR_MAP[color_id], width=3,
-                          command=lambda cid=color_id: self.add_color_to_guess(cid))
+            b = tk.Button(color_btn_frame, bg=COLOR_MAP[color_id], width=3, command=lambda cid=color_id: self.add_color_to_guess(cid))
             b.pack(side="left", padx=4, pady=4)
 
-        # boutons d'action : valider, effacer, révéler
+        # boutons d'action
         action_frame = tk.Frame(self)
         action_frame.pack(pady=6)
+
         tk.Button(action_frame, text="Valider", command=self.submit_guess).pack(side="left", padx=4)
         tk.Button(action_frame, text="Effacer", command=self.clear_guess).pack(side="left", padx=4)
         tk.Button(action_frame, text="Annuler le coup", command=self.undo_move).pack(side="left", padx=4)
@@ -111,22 +132,28 @@ class MastermindApp(tk.Tk):
         # démarrer une nouvelle partie
         self.reset_game()
 
-    # -------------------- Fonctions utilitaires d'interface --------------------
+    # -------------------- Fonctions utilitaires --------------------
+
+    def _on_mousewheel(self, event):
+        """Permet le scroll avec la molette."""
+        self.hist_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
     def show_rules(self):
-        """Affiche une boîte avec les règles du jeu."""
-        msg = (f"Mastermind\nCode de longueur {CODE_LENGTH}, couleurs {COLOR_MIN} à {COLOR_MAX}\n"
-               f"Doublons autorisés\nFeedback: noirs = bonne couleur & position, blancs = bonne couleur mauvaise position\n"
-               f"Vous avez {MAX_TURNS} essais")
+        """Affiche les règles du jeu."""
+        msg = (
+            f"Mastermind\n"
+            f"Code de longueur {CODE_LENGTH}, couleurs {COLOR_MIN} à {COLOR_MAX}\n"
+            f"Doublons autorisés\n"
+            f"Feedback: noirs = bonne couleur & position, "
+            f"blancs = bonne couleur mauvaise position\n"
+            f"Vous avez {MAX_TURNS} essais"
+        )
         messagebox.showinfo("Règles", msg)
 
     def reset_game(self):
         """
         Réinitialise l'état du jeu selon le mode sélectionné.
-        - joueur_devine : l'ordinateur génère un secret aléatoire
-        - ia_devine : le joueur saisit un secret, l'IA commence à jouer
-        - deux_joueurs : le joueur 1 saisit le secret, joueur 2 devine
         """
-        # réinitialiser les structures
         self.history.clear()
         self.turn = 0
         self.current_guess = [None] * CODE_LENGTH
@@ -136,66 +163,86 @@ class MastermindApp(tk.Tk):
         self.secret = None
 
         mode = self.mode.get()
+        
         if mode == "joueur_devine":
-            # générer un secret aléatoire et masquer l'affichage
-            self.secret = [random.randint(COLOR_MIN, COLOR_MAX) for _ in range(CODE_LENGTH)]
+            self.secret = [
+                random.randint(COLOR_MIN, COLOR_MAX)
+                for _ in range(CODE_LENGTH)
+            ]
+
             for c in self.secret_pegs:
                 c.configure(bg=EMPTY_COLOR)
+
         elif mode == "ia_devine":
-            # demander au joueur d'entrer le secret via une boîte de dialogue
             code = self.ask_secret_dialog()
             if code is None:
-                # si annulation, fallback à un secret aléatoire
-                self.secret = [random.randint(COLOR_MIN, COLOR_MAX) for _ in range(CODE_LENGTH)]
+                self.secret = [
+                    random.randint(COLOR_MIN, COLOR_MAX)
+                    for _ in range(CODE_LENGTH)
+                ]
             else:
                 self.secret = code
             for c in self.secret_pegs:
                 c.configure(bg=EMPTY_COLOR)
-            # initialiser l'IA et lancer son premier coup après un court délai
+
             self.ai = SimpleAI()
             self.after(500, self.ai_make_move)
+            
         elif mode == "deux_joueurs":
-            # joueur 1 saisit le secret (masqué)
             code = self.ask_secret_dialog(hidden=True)
             if code is None:
-                self.secret = [random.randint(COLOR_MIN, COLOR_MAX) for _ in range(CODE_LENGTH)]
+                self.secret = [
+                    random.randint(COLOR_MIN, COLOR_MAX)
+                    for _ in range(CODE_LENGTH)
+                ]
             else:
                 self.secret = code
+
             for c in self.secret_pegs:
                 c.configure(bg=EMPTY_COLOR)
 
     def ask_secret_dialog(self, hidden=False):
         """
         Ouvre une boîte de dialogue pour saisir le code secret.
-        Format attendu : chiffres séparés par des espaces, ex. "1 3 4 2".
-        Si hidden==False on affiche le code dans la zone 'Code secret'.
         """
-        prompt = f"Entrez le code secret ({CODE_LENGTH} chiffres séparés par espaces, {COLOR_MIN}-{COLOR_MAX})"
+        prompt = (
+            f"Entrez le code secret "
+            f"({CODE_LENGTH} chiffres séparés par espaces, "
+            f"{COLOR_MIN}-{COLOR_MAX})"
+        )
         s = simpledialog.askstring("Code secret", prompt, parent=self)
+        
         if s is None:
-            return None  # utilisateur a annulé
+            return None
+            
         parts = s.strip().split()
+
         if len(parts) != CODE_LENGTH:
             messagebox.showerror("Erreur", "Nombre de valeurs incorrect.")
             return None
+
         try:
             nums = [int(x) for x in parts]
+
         except ValueError:
             messagebox.showerror("Erreur", "Entrée invalide.")
             return None
-        # validation des bornes
+
         for n in nums:
             if n < COLOR_MIN or n > COLOR_MAX:
-                messagebox.showerror("Erreur", f"Valeurs doivent être entre {COLOR_MIN} et {COLOR_MAX}.")
+                messagebox.showerror(
+                    "Erreur",
+                    f"Valeurs doivent être entre {COLOR_MIN} et {COLOR_MAX}."
+                )
                 return None
-        # si on ne masque pas, afficher les couleurs dans la zone secret
+                
         if not hidden:
             for i, val in enumerate(nums):
-                self.secret_pegs[i].configure(bg=COLOR_MAP[val])
+                self.secret_pegs[i].configure(bg=COLOR_MAP[val]
         return nums
 
     def clear_guess(self):
-        """Remet la proposition courante à vide (None) et met à jour l'affichage."""
+        """Remet la proposition courante à vide."""
         self.current_guess = [None] * CODE_LENGTH
         for c in self.guess_slots:
             c.configure(bg=EMPTY_COLOR)
@@ -203,7 +250,6 @@ class MastermindApp(tk.Tk):
     def cycle_slot(self, idx):
         """
         Permet de cliquer sur un slot pour faire défiler les couleurs.
-        - None -> COLOR_MIN -> COLOR_MIN+1 -> ... -> None
         """
         cur = self.current_guess[idx]
         if cur is None:
@@ -218,28 +264,28 @@ class MastermindApp(tk.Tk):
 
     def add_color_to_guess(self, color_id):
         """
-        Ajoute la couleur sélectionnée dans le premier emplacement vide.
-        Si tous les emplacements sont pleins, remplace le dernier.
+        Ajoute une couleur dans le premier emplacement vide.
         """
         for i in range(CODE_LENGTH):
             if self.current_guess[i] is None:
                 self.current_guess[i] = color_id
                 self.guess_slots[i].configure(bg=COLOR_MAP[color_id])
                 return
-        # si plein, remplacer le dernier
+
         self.current_guess[-1] = color_id
         self.guess_slots[-1].configure(bg=COLOR_MAP[color_id])
 
     def submit_guess(self):
         """
         Valide la proposition du joueur.
-        - calcule le feedback
-        - l'ajoute à l'historique et l'affiche
-        - vérifie victoire ou dépassement du nombre d'essais
         """
         if None in self.current_guess:
-            messagebox.showwarning("Attention", "Complétez votre proposition avant de valider.")
+            messagebox.showwarning(
+                "Attention",
+                "Complétez votre proposition avant de valider."
+            )
             return
+            
         guess = list(self.current_guess)
         mode = self.mode.get()
 
@@ -248,12 +294,21 @@ class MastermindApp(tk.Tk):
             noirs, blancs = score(self.secret, guess)
             self.history.append((guess, (noirs, blancs)))
             self.draw_history_row(guess, noirs, blancs)
+
             if noirs == CODE_LENGTH:
-                messagebox.showinfo("Gagné", f"Bravo ! Vous avez trouvé le code en {self.turn} essais.")
+                messagebox.showinfo(
+                    "Gagné",
+                    f"Bravo ! Vous avez trouvé le code en {self.turn} essais."
+                )
                 self.reveal_code(show_msg=False)
                 return
+
             if self.turn >= MAX_TURNS:
-                messagebox.showinfo("Perdu", f"Vous avez épuisé vos essais. Le code était {' '.join(map(str,self.secret))}.")
+                messagebox.showinfo(
+                    "Perdu",
+                    f"Vous avez épuisé vos essais. "
+                    f"Le code était {' '.join(map(str, self.secret))}."
+                )
                 self.reveal_code(show_msg=False)
                 return
             self.clear_guess()
@@ -263,164 +318,226 @@ class MastermindApp(tk.Tk):
             noirs, blancs = score(self.secret, guess)
             self.history.append((guess, (noirs, blancs)))
             self.draw_history_row(guess, noirs, blancs)
+
             if noirs == CODE_LENGTH:
-                messagebox.showinfo("Gagné", f"Joueur 2 a trouvé le code en {self.turn} essais.")
+                messagebox.showinfo(
+                    "Gagné", f"Joueur 2 a trouvé le code en {self.turn} essais.")
                 self.reveal_code(show_msg=False)
                 return
+
             if self.turn >= MAX_TURNS:
-                messagebox.showinfo("Perdu", f"Joueur 2 a épuisé ses essais. Le code était {' '.join(map(str,self.secret))}.")
+                messagebox.showinfo(
+                    "Perdu",
+                    f"Joueur 2 a épuisé ses essais. "
+                    f"Le code était {' '.join(map(str, self.secret))}."
+                )
                 self.reveal_code(show_msg=False)
                 return
             self.clear_guess()
 
         elif mode == "ia_devine":
-            # en mode IA devine, l'utilisateur n'envoie pas de propositions manuelles
-            messagebox.showinfo("Info", "Mode IA devine: l'IA joue automatiquement. Utilisez 'Révéler code' si nécessaire.")
-            return
+            messagebox.showinfo(
+                "Info",
+                "Mode IA devine: l'IA joue automatiquement."
+            )
 
     def draw_history_row(self, guess, noirs, blancs):
         """
-        Dessine une ligne dans la zone historique :
-        - les pions de la proposition (carrés colorés)
-        - les petits pions de feedback (noirs/blancs)
-        Les positions sont calculées en fonction du nombre d'éléments déjà affichés.
+        Dessine une ligne dans la zone historique.
         """
-        y = 10 + len(self.hist_items) * 40  # position verticale selon le nombre de lignes
+        y = 10 + len(self.hist_items) * 40
         x = 10
-        # dessiner les pions de la proposition en carrés
+        # proposition
         for i, val in enumerate(guess):
-            self.hist_canvas.create_rectangle(x, y, x+30, y+30, fill=COLOR_MAP[val], outline="black")
+            self.hist_canvas.create_rectangle(x, y, x + 30, y + 30, fill=COLOR_MAP[val], outline="black")
             x += 40
-        # dessiner les pions de feedback (petits carrés)
+
+        # feedback
         fx = x + 10
         fy = y + 5
+
+        # noirs
         for i in range(noirs):
-            self.hist_canvas.create_rectangle(fx, fy, fx+10, fy+10, fill="red", outline="black") 
+
+            self.hist_canvas.create_rectangle(fx, fy, fx + 10, fy + 10, fill="red", outline="black")
             fx += 12
+
+        # blancs
         for i in range(blancs):
-            self.hist_canvas.create_rectangle(fx, fy, fx+10, fy+10, fill="white", outline="black")
+
+            self.hist_canvas.create_rectangle(fx, fy, fx + 10, fy + 10, fill="white", outline="black")
             fx += 12
-        # mémoriser la ligne ajoutée
+
+        # mémoriser
         self.hist_items.append((guess, noirs, blancs))
 
+        # update scroll
+        self.hist_canvas.configure(
+            scrollregion=self.hist_canvas.bbox("all")
+        )
+
+        # scroll auto
+        self.hist_canvas.yview_moveto(1.0)
+
     def clear_history_canvas(self):
-        """Efface la zone historique et réinitialise la liste interne."""
+        """Efface la zone historique."""
         self.hist_canvas.delete("all")
+        self.hist_inner = tk.Frame(self.hist_canvas)
+        self.hist_canvas.create_window(
+            (0, 0), window=self.hist_inner, anchor="nw")
         self.hist_items.clear()
+        self.hist_canvas.configure(scrollregion=self.hist_canvas.bbox("all"))
 
     def reveal_code(self, show_msg=True):
-        """Affiche le code secret dans la zone prévue et optionnellement un message."""
+        """Affiche le code secret."""
         for i, val in enumerate(self.secret):
             self.secret_pegs[i].configure(bg=COLOR_MAP[val])
+
         if show_msg:
-            messagebox.showinfo("Code révélé", "Le code secret a été affiché.")
+            messagebox.showinfo(
+                "Code révélé",
+                "Le code secret a été affiché."
+            )
 
     def ai_make_move(self):
         """
-        Boucle de jeu de l'IA (mode ia_devine) :
-        - l'IA propose un code
-        - on calcule le feedback et on l'affiche
-        - on filtre les possibilités de l'IA
-        - on relance après un délai si nécessaire
+        Boucle de jeu de l'IA.
         """
         if self.mode.get() != "ia_devine":
             return
+
         if self.ai is None:
             self.ai = SimpleAI()
+
         if self.turn >= MAX_TURNS:
-            messagebox.showinfo("Fin", "L'IA n'a pas trouvé le code dans le nombre d'essais autorisés.")
+
+            messagebox.showinfo(
+                "Fin",
+                "L'IA n'a pas trouvé le code."
+            )
             return
+
         guess = self.ai.next_guess()
         self.turn += 1
         noirs, blancs = score(self.secret, guess)
         self.history.append((guess, (noirs, blancs)))
         self.draw_history_row(guess, noirs, blancs)
+
         if noirs == CODE_LENGTH:
-            messagebox.showinfo("IA a gagné", f"L'IA a trouvé le code en {self.turn} essais.")
+            messagebox.showinfo(
+                "IA a gagné",
+                f"L'IA a trouvé le code en {self.turn} essais."
+            )
             self.reveal_code(show_msg=False)
             return
-        # fournir le feedback à l'IA pour qu'elle filtre ses possibilités
         self.ai.feedback(guess, noirs, blancs)
+
         if not self.ai.possibilities:
-            messagebox.showwarning("Erreur", "L'IA n'a plus de possibilités compatibles. Vérifiez le code ou les retours.")
+            messagebox.showwarning(
+                "Erreur",
+                "L'IA n'a plus de possibilités compatibles."
+            )
             return
-        # planifier le prochain coup de l'IA après 700 ms (pour voir l'évolution)
         self.after(700, self.ai_make_move)
-        
+
     def save_game(self):
-        """Sauvegarde l'état de la partie dans un fichier JSON[cite: 6]."""
+        """Sauvegarde l'état de la partie."""
         if self.secret is None:
-            messagebox.showwarning("Attention", "Aucune partie en cours.")
+            messagebox.showwarning(
+                "Attention",
+                "Aucune partie en cours."
+            )
             return
-        
+
         data = {
             "mode": self.mode.get(),
             "secret": self.secret,
             "history": self.history,
             "turn": self.turn
         }
-        filepath = filedialog.asksaveasfilename(defaultextension=".json", filetypes=[("Fichiers JSON", "*.json")])
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".json",
+            filetypes=[("Fichiers JSON", "*.json")]
+        )
+
         if filepath:
-            with open(filepath, 'w') as f:
+            with open(filepath, "w") as f:
                 json.dump(data, f)
-            messagebox.showinfo("Sauvegarde", "La partie a été sauvegardée avec succès.")
+            messagebox.showinfo(
+                "Sauvegarde",
+                "La partie a été sauvegardée avec succès."
+            )
 
     def load_game(self):
-        """Charge une partie depuis un fichier JSON[cite: 6]."""
-        filepath = filedialog.askopenfilename(filetypes=[("Fichiers JSON", "*.json")])
+        """Charge une partie depuis un fichier JSON."""
+        filepath = filedialog.askopenfilename(
+            filetypes=[("Fichiers JSON", "*.json")]
+        )
         if filepath:
-            with open(filepath, 'r') as f:
+            with open(filepath, "r") as f:
                 data = json.load(f)
-            
             self.mode.set(data["mode"])
             self.secret = data["secret"]
             self.history = data["history"]
             self.turn = data["turn"]
-            
-            # Restaurer l'affichage
+
+            # restaurer affichage
             self.clear_guess()
             self.clear_history_canvas()
+
             for c in self.secret_pegs:
                 c.configure(bg=EMPTY_COLOR)
-                
+
             for guess, (noirs, blancs) in self.history:
                 self.draw_history_row(guess, noirs, blancs)
-                
-            messagebox.showinfo("Chargement", "La partie a été chargée avec succès.")
+
+            messagebox.showinfo(
+                "Chargement",
+                "La partie a été chargée avec succès."
+            )
 
     def undo_move(self):
-        """Annule le dernier essai du joueur[cite: 6]."""
+        """Annule le dernier essai."""
         if not self.history:
-            messagebox.showinfo("Info", "Aucun coup à annuler.")
+            messagebox.showinfo(
+                "Info",
+                "Aucun coup à annuler."
+            )
             return
-        
-        # Retirer le dernier élément
+
         self.history.pop()
         self.turn -= 1
-        
-        # Redessiner tout l'historique
         self.clear_history_canvas()
+
         for guess, (noirs, blancs) in self.history:
             self.draw_history_row(guess, noirs, blancs)
 
     def give_hint(self):
-        """Fournit un code compatible avec les indices précédents (Aide)[cite: 6]."""
+        """Fournit un code compatible avec les indices précédents."""
+
         if self.mode.get() == "ia_devine":
-            messagebox.showinfo("Aide", "L'IA joue toute seule dans ce mode.")
+            messagebox.showinfo(
+                "Aide",
+                "L'IA joue toute seule dans ce mode."
+            )
             return
-            
-        # On utilise l'IA d'Arthur en arrière-plan pour générer une proposition valide 
         helper_ai = SimpleAI()
-        
-        # On filtre les possibilités de l'IA avec tout l'historique actuel
+
         for past_guess, (n, b) in self.history:
             helper_ai.feedback(past_guess, n, b)
-            
+
         if not helper_ai.possibilities:
-            messagebox.showwarning("Aide", "Aucune combinaison possible trouvée (vérifiez si des indices se contredisent).")
+            messagebox.showwarning(
+                "Aide",
+                "Aucune combinaison possible trouvée."
+            )
             return
-            
-        # On prend une possibilité au hasard parmi celles qui restent valides
+
         hint = random.choice(helper_ai.possibilities)
         hint_colors = [COLOR_MAP[c] for c in hint]
-        messagebox.showinfo("Aide", f"Un code compatible serait : {hint}\n(Couleurs: {', '.join(hint_colors)})")
+
+        messagebox.showinfo(
+            "Aide",
+            f"Un code compatible serait : {hint}\n"
+            f"(Couleurs: {', '.join(hint_colors)})"
+        )
