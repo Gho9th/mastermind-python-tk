@@ -27,3 +27,6 @@ Le projet ne nécessite aucune bibliothèque externe (Tkinter et JSON sont inclu
 1. Clonez ce dépôt sur votre machine locale :
    ```bash
    git clone [https://github.com/Array-deve/mastermind-python-tk.git](https://github.com/Array-deve/mastermind-python-tk.git)
+
+
+LIEN DE LA VIDEO DE DEMO DE L'APPLICATION: https://youtu.be/EqDGN9lVbko
