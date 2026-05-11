@@ -37,7 +37,7 @@ class MastermindApp(tk.Tk):
         # cadre pour choisir le mode de jeu
         mode_frame = tk.LabelFrame(top, text="Mode", padx=6, pady=6)
         mode_frame.pack(side="left", padx=6)
-        tk.Radiobutton(mode_frame, text="Joueur devine (IA choisit)", variable=self.mode, value="joueur_devine", command=self.reset_game).pack(anchor="w")
+        tk.Radiobutton(mode_frame, text="Joueur devine (aléatoire'", variable=self.mode, value="joueur_devine", command=self.reset_game).pack(anchor="w")
         tk.Radiobutton(mode_frame, text="IA devine (vous choisissez)", variable=self.mode, value="ia_devine", command=self.reset_game).pack(anchor="w")
         tk.Radiobutton(mode_frame, text="2 joueurs", variable=self.mode, value="deux_joueurs", command=self.reset_game).pack(anchor="w")
 
